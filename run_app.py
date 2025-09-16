@@ -23,22 +23,17 @@ def check_requirements():
         return False
 
 def check_env_file():
-    """Check if .env file exists and has required variables."""
+    """Check if environment variables are available (from .env file or Azure)."""
+    # Try to load .env file if it exists (for local development)
     env_file = Path(".env")
-    if not env_file.exists():
-        print("❌ .env file not found")
-        print("Please create a .env file with your Reddit API credentials:")
-        print("REDDIT_CLIENT_ID=your_client_id")
-        print("REDDIT_CLIENT_SECRET=your_client_secret")
-        print("REDDIT_USERNAME=your_username")
-        print("REDDIT_PASSWORD=your_password")
-        print("USER_AGENT=your_app_name/1.0")
-        return False
+    if env_file.exists():
+        from dotenv import load_dotenv
+        load_dotenv()
+        print("✅ Loaded .env file")
+    else:
+        print("ℹ️ No .env file found, checking Azure environment variables")
     
     # Check for required environment variables
-    from dotenv import load_dotenv
-    load_dotenv()
-    
     required_vars = [
         "REDDIT_CLIENT_ID",
         "REDDIT_CLIENT_SECRET", 
@@ -53,7 +48,10 @@ def check_env_file():
     
     if missing_vars:
         print(f"❌ Missing environment variables: {', '.join(missing_vars)}")
-        print("Please add these to your .env file")
+        if not env_file.exists():
+            print("Please add these to your Azure Web App configuration or create a .env file")
+        else:
+            print("Please add these to your .env file")
         return False
     
     print("✅ Environment variables configured")
