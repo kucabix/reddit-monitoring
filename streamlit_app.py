@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 import praw
 from google_docs_integration import GoogleDocsWriter
+from openai_analysis import RedditPostAnalyzer
 import plotly.express as px
 import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
@@ -192,12 +193,22 @@ if 'reddit_client' not in st.session_state:
     st.session_state.reddit_client = None
 if 'docs_writer' not in st.session_state:
     st.session_state.docs_writer = None
+if 'openai_analyzer' not in st.session_state:
+    st.session_state.openai_analyzer = None
 if 'search_results' not in st.session_state:
     st.session_state.search_results = []
+if 'analyzed_results' not in st.session_state:
+    st.session_state.analyzed_results = []
 if 'search_in_progress' not in st.session_state:
     st.session_state.search_in_progress = False
+if 'analysis_in_progress' not in st.session_state:
+    st.session_state.analysis_in_progress = False
 if 'selected_results' not in st.session_state:
     st.session_state.selected_results = []
+if 'keywords_placeholder' not in st.session_state:
+    st.session_state.keywords_placeholder = ""
+if 'subreddits_placeholder' not in st.session_state:
+    st.session_state.subreddits_placeholder = "all"
 
 def init_reddit_client():
     """Initialize Reddit client with environment variables."""
@@ -223,6 +234,134 @@ def init_google_docs():
     except Exception as e:
         st.warning(f"Google Docs integration failed: {e}")
         return None
+
+def init_openai_analyzer(business_context=None):
+    """Initialize OpenAI analyzer."""
+    try:
+        analyzer = RedditPostAnalyzer(business_context=business_context)
+        return analyzer
+    except Exception as e:
+        st.warning(f"OpenAI analyzer initialization failed: {e}")
+        return None
+
+def generate_placeholders_with_openai(company_type, specialty, blog_focus, target_audience, interests):
+    """Generate keywords and subreddits using OpenAI based on business context."""
+    try:
+        # Create temporary OpenAI client
+        from openai import OpenAI
+        import os
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OpenAI API key not found")
+        
+        client = OpenAI(api_key=api_key)
+        
+        # Create prompt for OpenAI
+        prompt = f"""
+        Based on this business context, generate relevant keywords and subreddits for Reddit monitoring:
+
+        BUSINESS CONTEXT:
+        - Company Type: {company_type}
+        - Specialty: {specialty}
+        - Blog Focus: {blog_focus}
+        - Target Audience: {target_audience}
+        - Interests: {', '.join(interests) if interests else 'Not specified'}
+
+        Please generate:
+        1. 10-15 relevant keywords that people might use when discussing topics related to this business
+        2. 8-10 relevant subreddits where this business might find relevant discussions
+
+        IMPORTANT: You MUST format your response EXACTLY as follows:
+
+        KEYWORDS:
+        keyword1
+        keyword2
+        keyword3
+        [continue with more keywords, one per line]
+
+        SUBREDDITS:
+        subreddit1
+        subreddit2
+        subreddit3
+        [continue with more subreddits, one per line, without r/ prefix]
+
+        Do not include any other text, explanations, or formatting. Just the keywords and subreddits in the exact format above.
+        """
+        
+        # Call OpenAI API
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert in business intelligence and social media monitoring. Generate relevant keywords and subreddits for Reddit monitoring based on business context."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.7,
+            max_tokens=500
+        )
+        
+        # Parse the response
+        response_text = response.choices[0].message.content
+        
+        # Extract keywords and subreddits with improved parsing
+        keywords = []
+        subreddits = []
+        
+        lines = response_text.strip().split('\n')
+        current_section = None
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Check for section headers (case insensitive)
+            if line.upper().startswith('KEYWORDS'):
+                current_section = 'keywords'
+                # Remove the header text and get any keyword on the same line
+                remaining = line.split(':', 1)[-1].strip()
+                if remaining:
+                    keywords.append(remaining)
+                continue
+            elif line.upper().startswith('SUBREDDITS'):
+                current_section = 'subreddits'
+                # Remove the header text and get any subreddit on the same line
+                remaining = line.split(':', 1)[-1].strip()
+                if remaining:
+                    subreddits.append(remaining)
+                continue
+            
+            # Add items to current section
+            if line and current_section == 'keywords':
+                # Clean up the keyword (remove bullets, dashes, numbers)
+                clean_keyword = line.lstrip('•-*123456789. ').strip()
+                if clean_keyword and len(clean_keyword) > 1:
+                    keywords.append(clean_keyword)
+            elif line and current_section == 'subreddits':
+                # Clean up the subreddit (remove bullets, dashes, numbers, r/ prefix)
+                clean_subreddit = line.lstrip('•-*123456789. ').strip()
+                if clean_subreddit.startswith('r/'):
+                    clean_subreddit = clean_subreddit[2:]
+                if clean_subreddit and len(clean_subreddit) > 1:
+                    subreddits.append(clean_subreddit)
+        
+        # Remove duplicates while preserving order
+        keywords = list(dict.fromkeys(keywords))
+        subreddits = list(dict.fromkeys(subreddits))
+        
+        # Ensure we have some results
+        if not keywords and not subreddits:
+            raise ValueError("No keywords or subreddits found in response")
+        
+        return keywords, subreddits
+        
+    except Exception as e:
+        st.warning(f"Failed to generate placeholders with OpenAI: {e}")
+        # Return empty placeholders if OpenAI fails
+        return [], []
 
 # Removed seen.db concept - no longer tracking seen posts
 
@@ -281,12 +420,33 @@ def search_reddit(keywords: list, subreddits: list, days_back: int = 30):
     
     return results
 
+def analyze_posts_with_ai(posts: list):
+    """Analyze posts using OpenAI for relevance scoring."""
+    if not st.session_state.openai_analyzer:
+        st.error("OpenAI analyzer not initialized. Please check your OpenAI API key.")
+        return []
+    
+    if not posts:
+        return []
+    
+    st.session_state.analysis_in_progress = True
+    
+    try:
+        # Analyze posts in batches to avoid overwhelming the API
+        analyzed_posts = st.session_state.openai_analyzer.analyze_posts_batch(posts)
+        return analyzed_posts
+    except Exception as e:
+        st.error(f"Analysis failed: {e}")
+        return posts  # Return original posts if analysis fails
+    finally:
+        st.session_state.analysis_in_progress = False
+
 def main():
     # Header
     st.markdown("""
     <div class="main-header">
         <h1>🔍 Reddit Agent MVP</h1>
-        <p>Monitor Reddit for keywords and export results to Google Docs</p>
+        <p>Monitor Reddit for keywords, analyze with AI, and export results to Google Docs</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -294,11 +454,95 @@ def main():
     with st.sidebar:
         st.markdown("### ⚙️ Configuration")
         
+        # Business Context Accordion
+        with st.expander("🏢 Business Context", expanded=False):
+            st.markdown("Customize the business context for AI analysis:")
+            
+            # Company Type
+            company_type = st.text_input(
+                "Company Type:",
+                value="software house",
+                help="Type of company (e.g., software house, e-commerce platform, SaaS startup)"
+            )
+            
+            # Specialty
+            specialty = st.text_input(
+                "Specialty:",
+                value="data visualization",
+                help="Company's main specialty or focus area"
+            )
+            
+            # Blog Focus
+            blog_focus = st.text_input(
+                "Blog Focus:",
+                value="data visualization topics",
+                help="Main topics for blog content"
+            )
+            
+            # Target Audience
+            target_audience = st.text_input(
+                "Target Audience:",
+                value="data professionals, analysts, developers",
+                help="Primary target audience for content"
+            )
+            
+            # Interests
+            interests_input = st.text_area(
+                "Interests (one per line or comma-separated):",
+                value="data visualization tools and techniques\nbusiness intelligence\ndashboard design\ndata storytelling\nanalytics platforms\ndata science workflows\nvisualization libraries (D3.js, Plotly, etc.)\nbusiness data challenges\ndata-driven decision making\ninteractive dashboards\ndata visualization best practices\nBI tools and platforms",
+                height=120,
+                help="Company interests and focus areas (one per line or comma-separated)"
+            )
+        
         # Initialize clients
         if st.button("🔄 Initialize Services", type="primary"):
             with st.spinner("Initializing services..."):
                 st.session_state.reddit_client = init_reddit_client()
                 st.session_state.docs_writer = init_google_docs()
+                
+                # Process interests input (same as keywords)
+                interests = []
+                if interests_input:
+                    # Split by newlines and commas, then clean
+                    raw_interests = interests_input.replace('\n', ',').split(',')
+                    interests = [i.strip() for i in raw_interests if i.strip()]
+                else:
+                    # Default interests if none provided
+                    interests = [
+                        f"{specialty} tools and techniques",
+                        "business intelligence",
+                        "dashboard design",
+                        "data storytelling",
+                        "analytics platforms",
+                        "data science workflows",
+                        "visualization libraries (D3.js, Plotly, etc.)",
+                        "business data challenges",
+                        "data-driven decision making",
+                        "interactive dashboards",
+                        f"{specialty} best practices",
+                        "BI tools and platforms"
+                    ]
+                
+                # Create custom business context from user inputs
+                custom_business_context = {
+                    "company_type": company_type,
+                    "specialty": specialty,
+                    "blog_focus": blog_focus,
+                    "target_audience": target_audience,
+                    "interests": interests
+                }
+                
+                # Generate placeholders using OpenAI
+                with st.spinner("🤖 Generating smart keywords and subreddits with AI..."):
+                    keywords_placeholder, subreddits_placeholder = generate_placeholders_with_openai(
+                        company_type, specialty, blog_focus, target_audience, interests
+                    )
+                
+                # Store placeholders in session state
+                st.session_state.keywords_placeholder = "\n".join(keywords_placeholder)
+                st.session_state.subreddits_placeholder = "\n".join(subreddits_placeholder)
+                
+                st.session_state.openai_analyzer = init_openai_analyzer(business_context=custom_business_context)
                 
                 if st.session_state.reddit_client:
                     st.success("✅ Reddit client initialized")
@@ -309,12 +553,17 @@ def main():
                     st.success("✅ Google Docs initialized")
                 else:
                     st.warning("⚠️ Google Docs not available")
+                
+                if st.session_state.openai_analyzer:
+                    st.success("✅ OpenAI analyzer initialized")
+                else:
+                    st.warning("⚠️ OpenAI analyzer not available")
 
         # Keywords input
         st.markdown("### 🏷️ Keywords")
         keywords_input = st.text_area(
             "Enter keywords (one per line or comma-separated):",
-            value="",
+            value=st.session_state.keywords_placeholder,
             height=100,
             help="Enter keywords to search for in Reddit posts"
         )
@@ -330,7 +579,7 @@ def main():
         st.markdown("### 📍 Subreddits")
         subreddits_input = st.text_area(
             "Enter subreddits (one per line or comma-separated):",
-            value="all",
+            value=st.session_state.subreddits_placeholder,
             height=100,
             help="Enter subreddit names (without r/) or 'all' for all subreddits"
         )
@@ -357,6 +606,9 @@ def main():
             type="primary",
             disabled=not keywords or not subreddits or st.session_state.search_in_progress
         )
+        
+        # AI Analysis button moved to main content area
+        analyze_button = False
 
     # Main content area
     col1, col2 = st.columns([2, 1])
@@ -373,15 +625,27 @@ def main():
             
             # Search Reddit
             status_text.text("🔍 Searching Reddit...")
-            progress_bar.progress(0.3)
+            progress_bar.progress(0.2)
             
             results = search_reddit(keywords, subreddits, days_back)
             st.session_state.search_results = results
             
-            progress_bar.progress(0.7)
-            status_text.text("✅ Search completed!")
-            progress_bar.progress(1.0)
+            progress_bar.progress(0.4)
+            status_text.text("🧠 Analyzing posts with AI...")
             
+            # Analyze posts with AI if analyzer is available
+            if st.session_state.openai_analyzer and results:
+                analyzed_results = analyze_posts_with_ai(results)
+                st.session_state.analyzed_results = analyzed_results
+                progress_bar.progress(0.8)
+                status_text.text("✅ Search and AI Analysis completed!")
+            else:
+                if not st.session_state.openai_analyzer:
+                    st.warning("⚠️ OpenAI analyzer not initialized. Results will be displayed without AI analysis.")
+                progress_bar.progress(0.8)
+                status_text.text("✅ Search completed!")
+            
+            progress_bar.progress(1.0)
             st.session_state.search_in_progress = False
             
             # Clear progress indicators
@@ -389,12 +653,26 @@ def main():
             progress_bar.empty()
             status_text.empty()
         
+        
         # Display results
         if st.session_state.search_results:
-            for i, result in enumerate(st.session_state.search_results):
+            # Use analyzed results if available, otherwise use search results
+            display_results = st.session_state.analyzed_results if st.session_state.analyzed_results else st.session_state.search_results
+            
+            # Show analysis status
+            if st.session_state.analyzed_results:
+                st.success("🤖 AI Analysis Complete - Posts are sorted by relevance score!")
+            else:
+                st.info("💡 Results displayed without AI analysis. Initialize OpenAI analyzer for relevance scoring.")
+            
+            for i, result in enumerate(display_results):
+                # Show relevance score if available
+                relevance_score = result.get('relevance_score', None)
+                score_display = f" (Relevance: {relevance_score}/100)" if relevance_score is not None else ""
+                
                 # Simple checkbox with title - let Streamlit manage the state
                 st.checkbox(
-                    f"📝 {result['title']}",
+                    f"📝 {result['title']}{score_display}",
                     key=f"checkbox_{i}"
                 )
                 
@@ -409,6 +687,23 @@ def main():
                     {f"<p><strong>Preview:</strong> {result['selftext']}</p>" if result['selftext'] else ""}
                 </div>
                 """, unsafe_allow_html=True)
+                
+                # Show AI insights using Streamlit components
+                if relevance_score is not None:
+                    with st.expander("🤖 AI Analysis", expanded=False):
+                        ai_col1, ai_col2 = st.columns(2)
+                        
+                        with ai_col1:
+                            st.metric("Relevance Score", f"{relevance_score}/100")
+                            st.write("**Content Type:**", result.get('content_type', 'N/A'))
+                            st.write("**Target Audience Match:**", result.get('target_audience_match', 'N/A'))
+                        
+                        with ai_col2:
+                            st.write("**Reasoning:**")
+                            st.write(result.get('reasoning', 'N/A'))
+                        
+                        st.write("**Business Opportunity:**")
+                        st.write(result.get('business_opportunity', 'N/A'))
             
             # Build selected results list from checkbox states
             selected_indices = []
@@ -424,6 +719,7 @@ def main():
     with col2:
         st.markdown("### 📈 Statistics")
         
+        
         if st.session_state.search_results:
             # Create summary metrics
             total_posts = len(st.session_state.search_results)
@@ -431,11 +727,35 @@ def main():
             unique_subreddits = len(set(r['subreddit'] for r in st.session_state.search_results))
             avg_score = sum(r['score'] for r in st.session_state.search_results) / total_posts if total_posts > 0 else 0
             
-            # Display metrics
+            # Display basic metrics
             st.metric("Total Posts", total_posts)
             st.metric("Selected Posts", selected_posts)
             st.metric("Unique Subreddits", unique_subreddits)
             st.metric("Average Score", f"{avg_score:.1f}")
+            
+            # Show AI analysis metrics if available
+            if st.session_state.analyzed_results:
+                st.markdown("### 🤖 AI Analysis Insights")
+                
+                # Calculate AI metrics
+                relevant_posts = [r for r in st.session_state.analyzed_results if r.get('relevance_score', 0) > 0]
+                high_relevance_posts = [r for r in st.session_state.analyzed_results if r.get('relevance_score', 0) >= 70]
+                avg_relevance = sum(r.get('relevance_score', 0) for r in st.session_state.analyzed_results) / len(st.session_state.analyzed_results)
+                
+                st.metric("Relevant Posts", len(relevant_posts))
+                st.metric("High Relevance (70+)", len(high_relevance_posts))
+                st.metric("Avg Relevance Score", f"{avg_relevance:.1f}")
+                
+                # Show content type distribution
+                content_types = {}
+                for result in st.session_state.analyzed_results:
+                    content_type = result.get('content_type', 'Unknown')
+                    content_types[content_type] = content_types.get(content_type, 0) + 1
+                
+                if content_types:
+                    st.markdown("**Content Types:**")
+                    for content_type, count in content_types.items():
+                        st.write(f"• {content_type}: {count}")
             
             # Subreddit distribution chart
             if unique_subreddits > 1:
@@ -467,13 +787,18 @@ def main():
                 if st.button("📄 Export to Google Docs", type="secondary"):
                     with st.spinner("Exporting to Google Docs..."):
                         try:
+                            # Use analyzed results if available, otherwise use search results
+                            export_results = st.session_state.analyzed_results if st.session_state.analyzed_results else st.session_state.search_results
+                            
                             # Determine which results to export
                             if export_option == "Export Selected Posts Only" and selected_posts > 0:
-                                results_to_export = [st.session_state.search_results[i] for i in st.session_state.selected_results]
-                                title = f"Reddit Monitoring Results (Selected) - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                                results_to_export = [export_results[i] for i in st.session_state.selected_results]
+                                analysis_suffix = " (AI Analyzed)" if st.session_state.analyzed_results else ""
+                                title = f"Reddit Monitoring Results (Selected{analysis_suffix}) - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
                             else:
-                                results_to_export = st.session_state.search_results
-                                title = f"Reddit Monitoring Results (All) - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                                results_to_export = export_results
+                                analysis_suffix = " (AI Analyzed)" if st.session_state.analyzed_results else ""
+                                title = f"Reddit Monitoring Results (All{analysis_suffix}) - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
                             
                             st.session_state.docs_writer.write_results(results_to_export, title)
                             st.success(f"✅ {len(results_to_export)} results exported to Google Docs successfully!")

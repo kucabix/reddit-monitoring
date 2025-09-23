@@ -1,6 +1,6 @@
 # Reddit Agent MVP
 
-A Streamlit web application that monitors Reddit for specific keywords and exports results to Google Docs.
+A Streamlit web application that monitors Reddit for specific keywords, analyzes posts with AI for business relevance, and exports results to Google Docs.
 
 ## Quick Start
 
@@ -24,6 +24,9 @@ GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
 GOOGLE_ACCESS_TOKEN=your_google_access_token
 GOOGLE_REFRESH_TOKEN=your_google_refresh_token
+
+# OpenAI API Credentials (Required for AI Analysis)
+OPENAI_API_KEY=your_openai_api_key
 ```
 
 ### 3. Run the Application
@@ -51,13 +54,28 @@ streamlit run streamlit_app.py
 5. Download `credentials.json` and place in project root
 6. Run the app once to generate tokens, then add them to `.env`
 
+### OpenAI API (Required for AI Analysis)
+1. Go to https://platform.openai.com/api-keys
+2. Create a new API key
+3. Add the key to your `.env` file as `OPENAI_API_KEY`
+
 ## Usage
 
 1. Open the web interface
 2. Click "Initialize Services" in the sidebar
 3. Enter keywords and subreddits to monitor
 4. Click "Start Search"
-5. Select posts and export to Google Docs (if configured)
+5. Click "Analyze with AI" to get relevance scores and business insights
+6. Select posts and export to Google Docs (if configured)
+
+## Features
+
+- **Reddit Monitoring**: Search Reddit posts by keywords and subreddits
+- **AI Analysis**: Use OpenAI to analyze post relevance for your business
+- **Business Context**: Configured for data visualization software house
+- **Relevance Scoring**: Posts are scored 0-100 based on business relevance
+- **Export to Google Docs**: Export selected or all posts with AI insights
+- **Statistics Dashboard**: View metrics and content type distribution
 
 ## Deployment
 
