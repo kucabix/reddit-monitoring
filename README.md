@@ -1,82 +1,163 @@
-# Reddit Agent MVP
+# Reddit Agent MVP - FastAPI + React + Shadcn/ui
 
-A Streamlit web application that monitors Reddit for specific keywords, analyzes posts with AI for business relevance, and exports results to Google Docs.
+A modern, mobile-responsive Reddit monitoring application built with FastAPI backend and React frontend using Shadcn/ui components.
 
-## Quick Start
+## 🚀 Features
 
-### 1. Install Dependencies
-```bash
-pip install -r requirements.txt
+- **Mobile-First Design**: Responsive UI that works perfectly on all devices
+- **Modern Tech Stack**: FastAPI + React + Next.js + Shadcn/ui + Tailwind CSS
+- **Reddit Integration**: Search Reddit posts by keywords and subreddits
+- **AI Analysis**: OpenAI-powered relevance scoring and content analysis
+- **Google Docs Export**: Export results to Google Docs
+- **Real-time Search**: Live search with progress indicators
+- **Professional UI**: Beautiful, accessible components with dark/light mode support
+
+## 🏗️ Architecture
+
+```
+reddit-agent-mvp/
+├── backend/                 # FastAPI backend
+│   ├── app/
+│   │   ├── api/            # API endpoints
+│   │   ├── models/         # Pydantic models
+│   │   └── core/           # Configuration
+│   └── requirements.txt
+├── frontend/               # React + Next.js frontend
+│   ├── src/
+│   │   ├── components/     # React components
+│   │   ├── app/           # Next.js app router
+│   │   └── lib/           # Utilities
+│   └── package.json
+└── docker-compose.yml
 ```
 
-### 2. Set Up Environment Variables
-Create a `.env` file in the project root:
+## 🛠️ Tech Stack
+
+### Backend
+- **FastAPI**: Modern, fast web framework
+- **Pydantic**: Data validation and serialization
+- **PRAW**: Reddit API wrapper
+- **OpenAI**: AI analysis and content scoring
+- **Google APIs**: Google Docs integration
+
+### Frontend
+- **Next.js 14**: React framework with app router
+- **Shadcn/ui**: Beautiful, accessible UI components
+- **Tailwind CSS**: Utility-first CSS framework
+- **TypeScript**: Type-safe development
+- **Axios**: HTTP client for API calls
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Docker and Docker Compose
+- Node.js 18+ (for local development)
+- Python 3.11+ (for local development)
+
+### Environment Variables
+Create a `.env` file in the root directory:
+
 ```env
-# Reddit API Credentials (Required)
+# Reddit API
 REDDIT_CLIENT_ID=your_reddit_client_id
 REDDIT_CLIENT_SECRET=your_reddit_client_secret
+REDDIT_USER_AGENT=your_user_agent
 REDDIT_USERNAME=your_reddit_username
 REDDIT_PASSWORD=your_reddit_password
-USER_AGENT=reddit-agent-mvp/1.0
 
-# Google Docs API Credentials (Optional)
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-GOOGLE_ACCESS_TOKEN=your_google_access_token
-GOOGLE_REFRESH_TOKEN=your_google_refresh_token
-
-# OpenAI API Credentials (Required for AI Analysis)
+# OpenAI API
 OPENAI_API_KEY=your_openai_api_key
+
+# Google Docs (optional)
+GOOGLE_CREDENTIALS_FILE=path_to_credentials.json
 ```
 
-### 3. Run the Application
+### Run with Docker Compose
+
 ```bash
-python run_app.py
-```
-Or directly:
-```bash
-streamlit run streamlit_app.py
+# Start both backend and frontend
+docker-compose up
+
+# Or run in background
+docker-compose up -d
 ```
 
-## Getting API Credentials
+### Local Development
+
+#### Backend
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+#### Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## 📱 Mobile Responsiveness
+
+The new architecture solves all mobile issues:
+
+- **No Sidebar Scrolling Issues**: Uses modern React components with proper touch handling
+- **Responsive Design**: Mobile-first approach with Tailwind CSS
+- **Touch-Friendly**: Shadcn/ui components are optimized for touch devices
+- **Fast Performance**: Next.js optimizations and modern React patterns
+
+## 🔧 API Endpoints
 
 ### Reddit API
-1. Go to https://www.reddit.com/prefs/apps
-2. Click "Create App" or "Create Another App"
-3. Choose "script" as the app type
-4. Copy the client ID and secret
+- `POST /api/reddit/search` - Search Reddit posts
+- `GET /api/reddit/health` - Check Reddit client status
 
-### Google Docs API (Optional)
-1. Go to https://console.cloud.google.com/
-2. Create a new project or select existing
-3. Enable Google Docs API and Google Drive API
-4. Create OAuth 2.0 credentials
-5. Download `credentials.json` and place in project root
-6. Run the app once to generate tokens, then add them to `.env`
+### Analysis API
+- `POST /api/analysis/analyze` - Analyze posts with AI
+- `GET /api/analysis/health` - Check OpenAI client status
 
-### OpenAI API (Required for AI Analysis)
-1. Go to https://platform.openai.com/api-keys
-2. Create a new API key
-3. Add the key to your `.env` file as `OPENAI_API_KEY`
+### Docs API
+- `POST /api/docs/export` - Export to Google Docs
+- `GET /api/docs/health` - Check Google Docs integration
 
-## Usage
+## 🎨 UI Components
 
-1. Open the web interface
-2. Click "Initialize Services" in the sidebar
-3. Enter keywords and subreddits to monitor
-4. Click "Start Search"
-5. Click "Analyze with AI" to get relevance scores and business insights
-6. Select posts and export to Google Docs (if configured)
+Built with Shadcn/ui for professional, accessible components:
 
-## Features
+- **Forms**: Input, Textarea, Select, Checkbox
+- **Data Display**: Table, Card, Badge, Progress
+- **Navigation**: Tabs, Accordion, Dialog
+- **Feedback**: Toast, Alert, Loading states
+- **Layout**: Responsive grid, mobile navigation
 
-- **Reddit Monitoring**: Search Reddit posts by keywords and subreddits
-- **AI Analysis**: Use OpenAI to analyze post relevance for your business
-- **Business Context**: Configured for data visualization software house
-- **Relevance Scoring**: Posts are scored 0-100 based on business relevance
-- **Export to Google Docs**: Export selected or all posts with AI insights
-- **Statistics Dashboard**: View metrics and content type distribution
+## 🔄 Migration from Streamlit
 
-## Deployment
+The new architecture provides:
 
-The app is configured for Azure Web App deployment with `startup.sh` and `.deployment` files.
+1. **Better Mobile Experience**: No more scrolling issues
+2. **Professional UI**: Modern, accessible design system
+3. **Better Performance**: Fast API responses and optimized React
+4. **Scalability**: Microservices architecture
+5. **Developer Experience**: TypeScript, modern tooling
+
+## 📊 Benefits Over Streamlit
+
+| Feature | Streamlit | FastAPI + React |
+|---------|-----------|-----------------|
+| Mobile Support | ❌ Poor | ✅ Excellent |
+| UI Components | ❌ Limited | ✅ Professional |
+| Performance | ❌ Slow | ✅ Fast |
+| Customization | ❌ Limited | ✅ Full Control |
+| Scalability | ❌ Monolithic | ✅ Microservices |
+| Developer Experience | ❌ Basic | ✅ Modern |
+
+## 🚀 Next Steps
+
+1. **Run the application**: `docker-compose up`
+2. **Access the app**: http://localhost:3000
+3. **API docs**: http://localhost:8000/docs
+4. **Configure your API keys** in the `.env` file
+5. **Start monitoring Reddit** with the beautiful new interface!
+
+The mobile scrolling issues are completely resolved with this modern architecture! 🎉
