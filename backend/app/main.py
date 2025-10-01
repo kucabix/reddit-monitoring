@@ -9,8 +9,6 @@ from dotenv import load_dotenv
 from app.api import reddit, analysis, docs
 import certifi
 from app.core.config import settings
-import aiohttp
-import ssl
 
 load_dotenv()
 
