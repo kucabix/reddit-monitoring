@@ -31,10 +31,9 @@ jobs:
         echo "Frontend dependencies installed"
     
     - name: Build frontend
-      working-directory: frontend
       run: |
+        cd frontend
         echo "Building frontend from $(pwd)"
-        ls -la src/lib/
         npm run build
         echo "Frontend build completed successfully"
     
