@@ -129,9 +129,32 @@ async def initialize_services():
         try:
             if settings.reddit_client_id and settings.reddit_client_secret:
                 import httpx
-                # Test with a simple Reddit API call
+                import base64
+                
+                # Get Reddit access token
+                credentials = f"{settings.reddit_client_id}:{settings.reddit_client_secret}"
+                encoded_credentials = base64.b64encode(credentials.encode()).decode()
+                
                 async with httpx.AsyncClient(verify=False) as client:
-                    response = await client.get("https://www.reddit.com/r/Python/hot.json", params={"limit": 1})
+                    # Get access token
+                    token_response = await client.post(
+                        "https://www.reddit.com/api/v1/access_token",
+                        headers={
+                            "Authorization": f"Basic {encoded_credentials}",
+                            "User-Agent": settings.reddit_user_agent or "RedditAgent/1.0 by /u/yourusername"
+                        },
+                        data={"grant_type": "client_credentials"}
+                    )
+                    token_response.raise_for_status()
+                    token_data = token_response.json()
+                    access_token = token_data["access_token"]
+                    
+                    # Test with authenticated Reddit API call
+                    headers = {
+                        "Authorization": f"Bearer {access_token}",
+                        "User-Agent": settings.reddit_user_agent or "RedditAgent/1.0 by /u/yourusername"
+                    }
+                    response = await client.get("https://oauth.reddit.com/r/Python/hot", params={"limit": 1}, headers=headers)
                     response.raise_for_status()
                 results["reddit"] = {"status": "success", "message": "Reddit API connected"}
             else:

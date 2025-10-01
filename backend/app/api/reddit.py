@@ -5,10 +5,44 @@ from datetime import datetime, timedelta, timezone
 import asyncio
 import httpx
 import json
+import base64
 from app.models.reddit import SearchRequest, SearchResponse, RedditPost
 from app.core.config import settings
 
 router = APIRouter()
+
+async def get_reddit_access_token() -> str:
+    """Get Reddit OAuth2 access token."""
+    if not settings.reddit_client_id or not settings.reddit_client_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="Reddit credentials not configured. Please set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET."
+        )
+    
+    # Create basic auth header
+    credentials = f"{settings.reddit_client_id}:{settings.reddit_client_secret}"
+    encoded_credentials = base64.b64encode(credentials.encode()).decode()
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://www.reddit.com/api/v1/access_token",
+            headers={
+                "Authorization": f"Basic {encoded_credentials}",
+                "User-Agent": settings.reddit_user_agent or "RedditAgent/1.0 by /u/yourusername"
+            },
+            data={
+                "grant_type": "client_credentials"
+            }
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to get Reddit access token: {response.text}"
+            )
+        
+        token_data = response.json()
+        return token_data["access_token"]
 
 async def get_reddit_client(request: Request):
     """Return shared httpx client from app.state."""
@@ -30,10 +64,16 @@ def matches(text: str, keywords: List[str]) -> tuple[bool, List[str]]:
 async def search_reddit(request: SearchRequest, req: Request):
     """Search Reddit for posts matching keywords."""
     try:
-        # Use shared httpx client
-        client = await get_reddit_client(req)
+        # Get Reddit access token
+        access_token = await get_reddit_access_token()
         
-        try:
+        # Create authenticated client
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "User-Agent": settings.reddit_user_agent or "RedditAgent/1.0 by /u/yourusername"
+        }
+        
+        async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
             results = []
             start_time = time.time()
             
@@ -44,8 +84,8 @@ async def search_reddit(request: SearchRequest, req: Request):
             # Process each subreddit
             for subreddit_name in request.subreddits:
                 try:
-                    # Use Reddit's JSON API
-                    url = f"https://www.reddit.com/r/{subreddit_name}/new.json"
+                    # Use Reddit's JSON API with authentication
+                    url = f"https://oauth.reddit.com/r/{subreddit_name}/new"
                     params = {"limit": 100}
                     
                     response = await client.get(url, params=params)
@@ -80,21 +120,16 @@ async def search_reddit(request: SearchRequest, req: Request):
                 except Exception as e:
                     print(f"Error searching r/{subreddit_name}: {e}")
                     continue
-        except HTTPException:
-            # Bubble up HTTPExceptions without wrapping to preserve detail
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Reddit search error: {e}")
-        
-        search_time = time.time() - start_time
-        unique_subreddits = len(set(r.subreddit for r in results))
-        
-        return SearchResponse(
-            posts=results,
-            total_posts=len(results),
-            unique_subreddits=unique_subreddits,
-            search_time=search_time
-        )
+            
+            search_time = time.time() - start_time
+            unique_subreddits = len(set(r.subreddit for r in results))
+            
+            return SearchResponse(
+                posts=results,
+                total_posts=len(results),
+                unique_subreddits=unique_subreddits,
+                search_time=search_time
+            )
         
     except HTTPException as e:
         # Preserve HTTPException details
@@ -113,11 +148,18 @@ async def reddit_health(req: Request):
                 "message": "Reddit credentials not configured - using mock data"
             }
         
-        client = await get_reddit_client(req)
-        # Test connection with a simple Reddit API call
-        response = await client.get("https://www.reddit.com/r/Python/hot.json", params={"limit": 1})
-        response.raise_for_status()
-        return {"status": "healthy", "message": "Reddit client is working"}
+        # Get access token and test connection
+        access_token = await get_reddit_access_token()
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "User-Agent": settings.reddit_user_agent or "RedditAgent/1.0 by /u/yourusername"
+        }
+        
+        async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+            # Test connection with a simple Reddit API call
+            response = await client.get("https://oauth.reddit.com/r/Python/hot", params={"limit": 1})
+            response.raise_for_status()
+            return {"status": "healthy", "message": "Reddit client is working"}
     except HTTPException as e:
         return {
             "status": "error", 
