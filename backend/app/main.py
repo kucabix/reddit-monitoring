@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
@@ -60,11 +62,20 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000",
+        "https://reddit-monitoring-app-b0cufgdzetc8b4ds.polandcentral-01.azurewebsites.net/"  # Add your Azure domain
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files (frontend build)
+static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # Include routers
 app.include_router(reddit.router, prefix="/api/reddit", tags=["reddit"])
@@ -73,11 +84,38 @@ app.include_router(docs.router, prefix="/api/docs", tags=["docs"])
 
 @app.get("/")
 async def root():
+    # Serve frontend index.html for root path
+    static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+    index_path = os.path.join(static_dir, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
     return {"message": "Reddit Agent API is running!"}
 
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+# Catch-all route for frontend routing (must be last)
+@app.get("/{full_path:path}")
+async def serve_frontend(full_path: str):
+    """Serve frontend for all non-API routes"""
+    # Don't interfere with API routes
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="API endpoint not found")
+    
+    static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+    file_path = os.path.join(static_dir, full_path)
+    
+    # If it's a file that exists, serve it
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    
+    # Otherwise serve index.html for client-side routing
+    index_path = os.path.join(static_dir, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    
+    raise HTTPException(status_code=404, detail="Not found")
 
 @app.post("/api/initialize")
 async def initialize_services():
