@@ -36,6 +36,7 @@ jobs:
         echo "Building frontend from $(pwd)"
         npm run build
         echo "Frontend build completed successfully"
+        ls -la out/
     
     - name: Install backend dependencies
       run: |
