@@ -15,7 +15,7 @@ class AnalysisRequest(BaseModel):
 class AnalyzedPost(RedditPost):
     relevance_score: Optional[int] = None
     content_type: Optional[str] = None
-    target_audience_match: Optional[str] = None
+    target_audience_match: Optional[int] = None
     reasoning: Optional[str] = None
     business_opportunity: Optional[str] = None
 
@@ -87,7 +87,7 @@ async def analyze_posts(request: AnalysisRequest):
                 
                 # Create analyzed post
                 analyzed_post = AnalyzedPost(
-                    **post.dict(),
+                    **post.model_dump(),
                     relevance_score=analysis_data.get('relevance_score'),
                     content_type=analysis_data.get('content_type'),
                     target_audience_match=analysis_data.get('target_audience_match'),
@@ -100,7 +100,7 @@ async def analyze_posts(request: AnalysisRequest):
             except Exception as e:
                 print(f"Error analyzing post {post.title}: {e}")
                 # Add post without analysis if analysis fails
-                analyzed_post = AnalyzedPost(**post.dict())
+                analyzed_post = AnalyzedPost(**post.model_dump())
                 analyzed_posts.append(analyzed_post)
         
         # Calculate statistics

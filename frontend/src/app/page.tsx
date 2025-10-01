@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { ConfigurationForm } from "@/components/forms/ConfigurationForm";
 import { SearchForm } from "@/components/forms/SearchForm";
 import { ResultsTable } from "@/components/results/ResultsTable";
@@ -13,12 +13,32 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, BarChart3, Settings } from "lucide-react";
+import { Search, BarChart3, Loader2 } from "lucide-react";
 
 export default function Dashboard() {
-  const [searchResults, setSearchResults] = useState([]);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPosts, setSelectedPosts] = useState<number[]>([]);
+  const [searchKeywords, setSearchKeywords] = useState<string[]>([]);
+  const [searchSubreddits, setSearchSubreddits] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState("search");
+  const [businessContext, setBusinessContext] = useState<
+    | {
+        companyType: string;
+        specialty: string;
+        blogFocus: string;
+        targetAudience: string;
+        interests: string[];
+      }
+    | undefined
+  >(undefined);
+
+  // When a search starts, automatically switch to the Results tab
+  React.useEffect(() => {
+    if (isSearching) {
+      setActiveTab("results");
+    }
+  }, [isSearching]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -39,8 +59,12 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-6">
-        <Tabs defaultValue="search" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="space-y-6"
+        >
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="search" className="flex items-center space-x-2">
               <Search className="h-4 w-4" />
               <span>Search</span>
@@ -52,14 +76,25 @@ export default function Dashboard() {
               <BarChart3 className="h-4 w-4" />
               <span>Results</span>
             </TabsTrigger>
-            <TabsTrigger value="config" className="flex items-center space-x-2">
-              <Settings className="h-4 w-4" />
-              <span>Configuration</span>
-            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="search" className="space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Business Context</CardTitle>
+                  <CardDescription>
+                    Set up your business context for AI analysis
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ConfigurationForm
+                    onKeywordsGenerated={setSearchKeywords}
+                    onSubredditsGenerated={setSearchSubreddits}
+                    onBusinessContextGenerated={setBusinessContext}
+                  />
+                </CardContent>
+              </Card>
               <Card>
                 <CardHeader>
                   <CardTitle>Search Configuration</CardTitle>
@@ -72,26 +107,31 @@ export default function Dashboard() {
                     onSearch={setSearchResults}
                     isSearching={isSearching}
                     setIsSearching={setIsSearching}
+                    keywords={searchKeywords}
+                    subreddits={searchSubreddits}
+                    onKeywordsChange={setSearchKeywords}
+                    onSubredditsChange={setSearchSubreddits}
+                    businessContext={businessContext}
                   />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Business Context</CardTitle>
-                  <CardDescription>
-                    Set up your business context for AI analysis
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ConfigurationForm />
                 </CardContent>
               </Card>
             </div>
           </TabsContent>
 
           <TabsContent value="results" className="space-y-6">
-            {searchResults.length > 0 ? (
+            {isSearching ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">
+                    Searching Reddit...
+                  </h3>
+                  <p className="text-muted-foreground text-center">
+                    Hang tight while we fetch and analyze the latest posts.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : searchResults.length > 0 ? (
               <>
                 <StatsCards
                   results={searchResults}
@@ -115,20 +155,6 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             )}
-          </TabsContent>
-
-          <TabsContent value="config" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Advanced Configuration</CardTitle>
-                <CardDescription>
-                  Configure API keys and advanced settings
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ConfigurationForm />
-              </CardContent>
-            </Card>
           </TabsContent>
         </Tabs>
       </div>

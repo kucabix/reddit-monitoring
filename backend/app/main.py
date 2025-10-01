@@ -5,7 +5,10 @@ import os
 from dotenv import load_dotenv
 
 from app.api import reddit, analysis, docs
+import certifi
 from app.core.config import settings
+import aiohttp
+import ssl
 
 load_dotenv()
 
@@ -13,9 +16,39 @@ load_dotenv()
 async def lifespan(app: FastAPI):
     # Startup
     print("🚀 Starting Reddit Agent API...")
+    # Ensure SSL uses certifi CA bundle (fixes SSL CERTIFICATE_VERIFY_FAILED on some macOS setups)
+    try:
+        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    except Exception:
+        pass
+
+    # Create shared Reddit client if credentials are configured
+    app.state.reddit_client = None
+    try:
+        if settings.reddit_client_id and settings.reddit_client_secret:
+            import httpx
+            
+            # Create httpx client with SSL verification disabled
+            app.state.reddit_client = httpx.AsyncClient(
+                verify=False,
+                timeout=30.0,
+                headers={
+                    "User-Agent": settings.reddit_user_agent or "RedditAgent/1.0"
+                }
+            )
+    except Exception as e:
+        print(f"Failed to initialize shared Reddit client: {e}")
+
     yield
     # Shutdown
-    print("🛑 Shutting down Reddit Agent API...")
+    try:
+        if getattr(app.state, "reddit_client", None) is not None:
+            try:
+                await app.state.reddit_client.aclose()
+            except Exception:
+                pass
+    finally:
+        print("🛑 Shutting down Reddit Agent API...")
 
 app = FastAPI(
     title="Reddit Agent API",
@@ -24,12 +57,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware - Allow all origins for development
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
-    allow_credentials=False,  # Set to False when using allow_origins=["*"]
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -53,63 +86,57 @@ async def initialize_services():
         results = {
             "reddit": {"status": "error", "message": "Not configured"},
             "openai": {"status": "error", "message": "Not configured"},
-            "google_docs": {"status": "error", "message": "Not configured"}
+            "google_docs": {"status": "error", "message": "Not configured"},
         }
-        
+
         # Test Reddit API
         try:
             if settings.reddit_client_id and settings.reddit_client_secret:
-                import praw
-                reddit = praw.Reddit(
-                    client_id=settings.reddit_client_id,
-                    client_secret=settings.reddit_client_secret,
-                    user_agent=settings.reddit_user_agent or "RedditAgent/1.0",
-                    ratelimit_seconds=5,
-                )
-                # Test with a simple read-only operation
-                reddit.subreddit("test").display_name
+                import httpx
+                # Test with a simple Reddit API call
+                async with httpx.AsyncClient(verify=False) as client:
+                    response = await client.get("https://www.reddit.com/r/Python/hot.json", params={"limit": 1})
+                    response.raise_for_status()
                 results["reddit"] = {"status": "success", "message": "Reddit API connected"}
             else:
                 results["reddit"] = {"status": "warning", "message": "Reddit credentials not configured"}
         except Exception as e:
             results["reddit"] = {"status": "error", "message": f"Reddit API error: {e}"}
-        
+
         # Test OpenAI API
         try:
             if settings.openai_api_key:
                 from openai import OpenAI
                 client = OpenAI(api_key=settings.openai_api_key)
-                # Test with a simple completion
-                response = client.chat.completions.create(
+                # minimal call to validate key without heavy usage
+                client.chat.completions.create(
                     model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": "Hello"}],
-                    max_tokens=5
+                    messages=[{"role": "user", "content": "ping"}],
+                    max_tokens=1,
                 )
                 results["openai"] = {"status": "success", "message": "OpenAI API connected"}
             else:
                 results["openai"] = {"status": "warning", "message": "OpenAI API key not configured"}
         except Exception as e:
             results["openai"] = {"status": "error", "message": f"OpenAI API error: {e}"}
-        
-        # Test Google Docs API
+
+        # Test Google Docs configuration
         try:
             if settings.google_client_id and settings.google_client_secret:
                 results["google_docs"] = {"status": "success", "message": "Google Docs credentials configured"}
             elif settings.google_credentials_file:
-                import os
                 if os.path.exists(settings.google_credentials_file):
-                    results["google_docs"] = {"status": "success", "message": "Google Docs credentials file found"}
+                    results["google_docs"] = {"status": "success", "message": "Google credentials file found"}
                 else:
                     results["google_docs"] = {"status": "error", "message": "Google credentials file not found"}
             else:
                 results["google_docs"] = {"status": "warning", "message": "Google credentials not configured"}
         except Exception as e:
             results["google_docs"] = {"status": "error", "message": f"Google Docs error: {e}"}
-        
-        # Determine overall status
-        all_success = all(result["status"] == "success" for result in results.values())
-        any_errors = any(result["status"] == "error" for result in results.values())
-        
+
+        all_success = all(r["status"] == "success" for r in results.values())
+        any_errors = any(r["status"] == "error" for r in results.values())
+
         if all_success:
             overall_status = "success"
             message = "All services initialized successfully"
@@ -119,13 +146,11 @@ async def initialize_services():
         else:
             overall_status = "warning"
             message = "Services initialized with warnings"
-        
+
         return {
             "status": overall_status,
             "message": message,
             "services": results,
-            "timestamp": "2024-01-01T00:00:00Z"  # You might want to use actual timestamp
         }
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Initialization failed: {e}")

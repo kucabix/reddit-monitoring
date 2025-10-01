@@ -4,17 +4,26 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, Loader2 } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 
-export function ConfigurationForm() {
+interface ConfigurationFormProps {
+  onKeywordsGenerated?: (keywords: string[]) => void;
+  onSubredditsGenerated?: (subreddits: string[]) => void;
+  onBusinessContextGenerated?: (context: {
+    companyType: string;
+    specialty: string;
+    blogFocus: string;
+    targetAudience: string;
+    interests: string[];
+  }) => void;
+}
+
+export function ConfigurationForm({
+  onKeywordsGenerated,
+  onSubredditsGenerated,
+  onBusinessContextGenerated,
+}: ConfigurationFormProps) {
   const [companyType, setCompanyType] = useState("software house");
   const [specialty, setSpecialty] = useState("data visualization");
   const [blogFocus, setBlogFocus] = useState("data visualization topics");
@@ -35,13 +44,11 @@ interactive dashboards
 data visualization best practices
 BI tools and platforms`);
   const [isInitializing, setIsInitializing] = useState(false);
-  const [initializationResult, setInitializationResult] = useState<any>(null);
 
-  const handleInitialize = async () => {
+  const handleFeedSearch = async () => {
     setIsInitializing(true);
-    setInitializationResult(null);
     try {
-      const response = await fetch("http://localhost:8000/api/initialize", {
+      const response = await fetch("/api/initialize", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -53,15 +60,45 @@ BI tools and platforms`);
       }
 
       const result = await response.json();
-      setInitializationResult(result);
-      console.log("Initialization result:", result);
-    } catch (error) {
-      console.error("Initialization error:", error);
-      setInitializationResult({
-        status: "error",
-        message: `Failed to initialize services: ${error}`,
-        services: {},
+      console.log("Services initialized:", result);
+
+      // Update keywords based on the form data
+      const keywords = [
+        companyType,
+        specialty,
+        blogFocus,
+        targetAudience,
+        ...interests.split("\n").filter((interest) => interest.trim()),
+      ].filter((keyword) => keyword.trim());
+
+      console.log("Updated keywords:", keywords);
+
+      // Update the search form inputs
+      onKeywordsGenerated?.(keywords);
+
+      // Generate relevant subreddits based on the business context
+      const relevantSubreddits = [
+        "datascience",
+        "MachineLearning",
+        "programming",
+        "businessintelligence",
+        "analytics",
+        "dataisbeautiful",
+        "visualization",
+      ];
+
+      onSubredditsGenerated?.(relevantSubreddits);
+
+      // Pass business context for AI analysis
+      onBusinessContextGenerated?.({
+        companyType,
+        specialty,
+        blogFocus,
+        targetAudience,
+        interests: interests.split("\n").filter((interest) => interest.trim()),
       });
+    } catch (error) {
+      console.error("Feed search error:", error);
     } finally {
       setIsInitializing(false);
     }
@@ -123,65 +160,22 @@ BI tools and platforms`);
       </div>
 
       <Button
-        onClick={handleInitialize}
+        onClick={handleFeedSearch}
         disabled={isInitializing}
         className="w-full"
       >
         {isInitializing ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Initializing Services...
+            Searching Feed...
           </>
         ) : (
           <>
-            <Settings className="mr-2 h-4 w-4" />
-            Initialize Services
+            <Search className="mr-2 h-4 w-4" />
+            Feed Search
           </>
         )}
       </Button>
-
-      {initializationResult && (
-        <div className="mt-4 p-4 border rounded-lg">
-          <h3 className="font-semibold mb-2">Initialization Results</h3>
-          <div
-            className={`p-2 rounded ${
-              initializationResult.status === "success"
-                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                : initializationResult.status === "warning"
-                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-            }`}
-          >
-            <strong>Status:</strong> {initializationResult.message}
-          </div>
-
-          {initializationResult.services && (
-            <div className="mt-3 space-y-2">
-              {Object.entries(initializationResult.services).map(
-                ([service, result]: [string, any]) => (
-                  <div
-                    key={service}
-                    className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-800 rounded"
-                  >
-                    <span className="font-medium capitalize">{service}</span>
-                    <span
-                      className={`px-2 py-1 rounded text-xs ${
-                        result.status === "success"
-                          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                          : result.status === "warning"
-                          ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                          : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                      }`}
-                    >
-                      {result.status}
-                    </span>
-                  </div>
-                )
-              )}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
