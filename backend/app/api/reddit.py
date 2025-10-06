@@ -70,7 +70,7 @@ def is_post_stale(db: Session, reddit_id: str) -> bool:
     
     # Check if displayed more than 48 hours ago
     from datetime import timedelta
-    stale_threshold = datetime.utcnow() - timedelta(hours=48)
+    stale_threshold = datetime.utcnow() - timedelta(minutes=1) # revert to 48 hours after demo
     return displayed_post.displayed_at < stale_threshold
 
 def mark_post_as_displayed(db: Session, reddit_id: str, title: str, created_utc: datetime):
