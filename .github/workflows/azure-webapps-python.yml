@@ -27,7 +27,7 @@ jobs:
     - name: Install frontend dependencies
       working-directory: frontend
       run: |
-        npm ci
+        npm install --no-audit --no-fund
         echo "Frontend dependencies installed"
     
     - name: Build frontend
