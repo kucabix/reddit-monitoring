@@ -9,7 +9,9 @@ credentials.json
 token.pickle
 
 # Database
-seen.db
+*.db
+*.sqlite
+*.sqlite3
 
 # Python
 __pycache__/

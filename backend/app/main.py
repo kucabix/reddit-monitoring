@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from app.api import reddit, analysis, docs
 import certifi
 from app.core.config import settings
+from app.database import init_db
 
 load_dotenv()
 
@@ -16,6 +17,14 @@ load_dotenv()
 async def lifespan(app: FastAPI):
     # Startup
     print("🚀 Starting Reddit Agent API...")
+    
+    # Initialize database
+    try:
+        init_db()
+        print("✅ Database initialized successfully")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+    
     # Ensure SSL uses certifi CA bundle (fixes SSL CERTIFICATE_VERIFY_FAILED on some macOS setups)
     try:
         os.environ.setdefault("SSL_CERT_FILE", certifi.where())

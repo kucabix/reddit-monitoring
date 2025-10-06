@@ -39,6 +39,13 @@ export function ResultsTable({
   selectedPosts,
   onSelectionChange,
 }: ResultsTableProps) {
+  // Sort posts: fresh posts first, then stale posts at the bottom
+  const sortedResults = [...results].sort((a, b) => {
+    if (a.is_stale && !b.is_stale) return 1;
+    if (!a.is_stale && b.is_stale) return -1;
+    return 0;
+  });
+
   const handleSelectAll = () => {
     if (selectedPosts.length === results.length) {
       onSelectionChange([]);
@@ -79,13 +86,16 @@ export function ResultsTable({
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {results.map((post, index) => (
-            <Card key={index} className="p-3 sm:p-4">
+          {sortedResults.map((post, index) => (
+            <Card
+              key={index}
+              className={`p-3 sm:p-4 ${post.is_stale ? "opacity-60" : ""}`}
+            >
               <div className="flex items-start space-x-2 sm:space-x-3">
                 <Checkbox
                   checked={selectedPosts.includes(index)}
                   onCheckedChange={() => handleSelectPost(index)}
-                  className="w-4 h-4 sm:w-5 sm:h-5 mt-1"
+                  className="w-4 h-4 sm:w-5 sm:h-5"
                 />
                 <div className="flex-1 space-y-2">
                   {/* Title and Stats - Mobile Optimized */}
@@ -95,7 +105,7 @@ export function ResultsTable({
                     </h3>
 
                     {/* Stats Row */}
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <div className="flex sm:items-center justify-between text-xs text-muted-foreground flex-col sm:flex-row gap-2">
                       <div className="flex items-center space-x-3">
                         <div className="flex items-center space-x-1">
                           <TrendingUp className="h-3 w-3" />
@@ -113,6 +123,14 @@ export function ResultsTable({
                         >
                           r/{post.subreddit}
                         </Badge>
+                        {post.is_stale && (
+                          <Badge
+                            variant="outline"
+                            className="text-xs px-1.5 py-0.5 text-muted-foreground"
+                          >
+                            stale
+                          </Badge>
+                        )}
                         <span className="text-xs">{post.created}</span>
                       </div>
                     </div>
@@ -181,8 +199,7 @@ export function ResultsTable({
                         </AccordionTrigger>
                         <AccordionContent>
                           <div className="space-y-2 p-3 bg-muted/50 rounded-lg">
-                            {/* Mobile-optimized grid layout */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            <div className="flex flex-col gap-2 text-xs">
                               {post.relevance_score && (
                                 <div className="flex items-center space-x-1">
                                   <Target className="h-3 w-3 text-blue-500" />

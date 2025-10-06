@@ -34,7 +34,7 @@ jobs:
       run: |
         cd frontend
         echo "Building frontend from $(pwd)"
-        npm run build
+        npm run build:export
         echo "Frontend build completed successfully"
         ls -la out/
     

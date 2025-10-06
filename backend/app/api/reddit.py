@@ -6,8 +6,10 @@ import asyncio
 import httpx
 import json
 import base64
+from sqlalchemy.orm import Session
 from app.models.reddit import SearchRequest, SearchResponse, RedditPost
 from app.core.config import settings
+from app.database import get_db, DisplayedPost
 
 router = APIRouter()
 
@@ -60,8 +62,30 @@ def matches(text: str, keywords: List[str]) -> tuple[bool, List[str]]:
     matched_keywords = [k for k in keywords if k.lower() in t]
     return bool(matched_keywords), matched_keywords
 
+def is_post_stale(db: Session, reddit_id: str) -> bool:
+    """Check if a Reddit post is stale (displayed more than 48 hours ago)."""
+    displayed_post = db.query(DisplayedPost).filter(DisplayedPost.reddit_id == reddit_id).first()
+    if not displayed_post:
+        return False
+    
+    # Check if displayed more than 48 hours ago
+    from datetime import timedelta
+    stale_threshold = datetime.utcnow() - timedelta(hours=48)
+    return displayed_post.displayed_at < stale_threshold
+
+def mark_post_as_displayed(db: Session, reddit_id: str, title: str, created_utc: datetime):
+    """Mark a Reddit post as displayed in the database."""
+    displayed_post = DisplayedPost(
+        reddit_id=reddit_id,
+        title=title,
+        created_utc=created_utc
+    )
+    db.add(displayed_post)
+    db.commit()
+    return displayed_post
+
 @router.post("/search", response_model=SearchResponse)
-async def search_reddit(request: SearchRequest, req: Request):
+async def search_reddit(request: SearchRequest, req: Request, db: Session = Depends(get_db)):
     """Search Reddit for posts matching keywords."""
     try:
         # Get Reddit access token
@@ -75,6 +99,7 @@ async def search_reddit(request: SearchRequest, req: Request):
         
         async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
             results = []
+            new_posts_count = 0
             start_time = time.time()
             
             # Calculate timestamp for specified days back
@@ -103,17 +128,37 @@ async def search_reddit(request: SearchRequest, req: Request):
                         is_match, matched_keywords = matches(text, request.keywords)
                         
                         if is_match:
+                            reddit_id = post.get("id", "")
+                            created_utc = datetime.fromtimestamp(post.get("created_utc", 0))
+                            
+                            # Check if post is stale (displayed more than 48h ago)
+                            is_stale = False
+                            if reddit_id:
+                                is_stale = is_post_stale(db, reddit_id)
+                            
                             result = RedditPost(
                                 title=post.get("title", ""),
                                 subreddit=post.get("subreddit", subreddit_name),
                                 url=f"https://reddit.com{post.get('permalink', '')}",
-                                created=datetime.fromtimestamp(post.get("created_utc", 0)).strftime("%Y-%m-%d %H:%M:%S"),
+                                created=created_utc.strftime("%Y-%m-%d %H:%M:%S"),
                                 keywords=matched_keywords,
                                 selftext=(post.get("selftext", "")[:200] + "...") if len(post.get("selftext", "")) > 200 else post.get("selftext", ""),
                                 score=post.get("score", 0),
-                                num_comments=post.get("num_comments", 0)
+                                num_comments=post.get("num_comments", 0),
+                                reddit_id=reddit_id,
+                                is_stale=is_stale
                             )
                             results.append(result)
+                            
+                            # Mark as displayed if it's a new post
+                            if not is_stale and reddit_id:
+                                # Check if already in database to avoid duplicates
+                                existing = db.query(DisplayedPost).filter(DisplayedPost.reddit_id == reddit_id).first()
+                                if not existing:
+                                    mark_post_as_displayed(
+                                        db, reddit_id, post.get("title", ""), created_utc
+                                    )
+                                    new_posts_count += 1
                         
                         await asyncio.sleep(0.1)  # Rate limiting
                         
@@ -128,7 +173,8 @@ async def search_reddit(request: SearchRequest, req: Request):
                 posts=results,
                 total_posts=len(results),
                 unique_subreddits=unique_subreddits,
-                search_time=search_time
+                search_time=search_time,
+                new_posts=new_posts_count
             )
         
     except HTTPException as e:
@@ -170,3 +216,62 @@ async def reddit_health(req: Request):
             "status": "error", 
             "message": f"Reddit client error: {e}"
         }
+
+@router.get("/displayed-posts")
+async def get_displayed_posts(db: Session = Depends(get_db), limit: int = 50):
+    """Get list of displayed posts from database."""
+    try:
+        posts = db.query(DisplayedPost).order_by(DisplayedPost.displayed_at.desc()).limit(limit).all()
+        return {
+            "posts": [
+                {
+                    "id": post.id,
+                    "reddit_id": post.reddit_id,
+                    "title": post.title,
+                    "created_utc": post.created_utc.isoformat(),
+                    "displayed_at": post.displayed_at.isoformat(),
+                    "is_stale": is_post_stale(db, post.reddit_id)
+                }
+                for post in posts
+            ],
+            "total": len(posts)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get displayed posts: {e}")
+
+@router.delete("/displayed-posts/{reddit_id}")
+async def clear_displayed_post(reddit_id: str, db: Session = Depends(get_db)):
+    """Remove a post from displayed posts (mark as not displayed)."""
+    try:
+        post = db.query(DisplayedPost).filter(DisplayedPost.reddit_id == reddit_id).first()
+        if not post:
+            raise HTTPException(status_code=404, detail="Post not found in displayed posts")
+        
+        db.delete(post)
+        db.commit()
+        return {"message": f"Post {reddit_id} removed from displayed posts"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to remove post: {e}")
+
+@router.get("/displayed-posts/stats")
+async def get_displayed_posts_stats(db: Session = Depends(get_db)):
+    """Get statistics about displayed posts."""
+    try:
+        total_posts = db.query(DisplayedPost).count()
+        
+        # Count stale posts (displayed more than 48h ago)
+        from datetime import timedelta
+        stale_threshold = datetime.utcnow() - timedelta(hours=48)
+        stale_posts = db.query(DisplayedPost).filter(DisplayedPost.displayed_at < stale_threshold).count()
+        fresh_posts = total_posts - stale_posts
+        
+        return {
+            "total_displayed_posts": total_posts,
+            "fresh_posts": fresh_posts,
+            "stale_posts": stale_posts,
+            "stale_threshold_hours": 48
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get stats: {e}")

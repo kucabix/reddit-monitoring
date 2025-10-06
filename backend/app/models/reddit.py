@@ -11,6 +11,8 @@ class RedditPost(BaseModel):
     selftext: Optional[str] = None
     score: int
     num_comments: int
+    reddit_id: Optional[str] = None  # Reddit post ID for tracking
+    is_stale: Optional[bool] = False  # Whether this post was displayed more than 48h ago
 
 class SearchRequest(BaseModel):
     keywords: List[str]
@@ -22,6 +24,7 @@ class SearchResponse(BaseModel):
     total_posts: int
     unique_subreddits: int
     search_time: float
+    new_posts: int  # Number of posts not previously displayed
 
 class BusinessContext(BaseModel):
     company_type: str

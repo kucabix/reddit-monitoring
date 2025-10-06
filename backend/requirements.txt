@@ -10,3 +10,5 @@ google-auth-httplib2==0.1.1
 google-auth-oauthlib==1.1.0
 python-multipart==0.0.6
 httpx==0.25.2
+sqlalchemy==2.0.23
+alembic==1.13.1
