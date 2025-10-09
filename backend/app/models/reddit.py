@@ -12,7 +12,7 @@ class RedditPost(BaseModel):
     score: int
     num_comments: int
     reddit_id: Optional[str] = None  # Reddit post ID for tracking
-    is_stale: Optional[bool] = False  # Whether this post was displayed more than 48h ago
+    is_stale: Optional[bool] = False 
 
 class SearchRequest(BaseModel):
     keywords: List[str]

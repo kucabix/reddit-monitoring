@@ -141,6 +141,8 @@ export default function Dashboard() {
                   results={searchResults}
                   selectedPosts={selectedPosts}
                   onSelectionChange={setSelectedPosts}
+                  businessContext={businessContext}
+                  onResultsUpdate={setSearchResults}
                 />
               </>
             ) : (

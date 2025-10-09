@@ -135,7 +135,7 @@ export function SearchForm({
       const searchData = await searchResponse.json();
       const posts = searchData.posts;
 
-      // If we have business context, analyze the posts
+      // If we have business context, run basic relevance analysis
       if (businessContext && posts.length > 0) {
         try {
           const analysisResponse = await fetch("/api/analysis/analyze", {
@@ -152,6 +152,7 @@ export function SearchForm({
                 target_audience: businessContext.targetAudience,
                 interests: businessContext.interests,
               },
+              analysis_type: "basic",
             }),
           });
 
@@ -163,7 +164,7 @@ export function SearchForm({
             onSearch(posts);
           }
         } catch (analysisError) {
-          console.error("Analysis error:", analysisError);
+          console.error("Basic analysis error:", analysisError);
           // If analysis fails, use original posts
           onSearch(posts);
         }

@@ -11,6 +11,7 @@ router = APIRouter()
 class AnalysisRequest(BaseModel):
     posts: List[RedditPost]
     business_context: BusinessContext
+    analysis_type: Optional[str] = "detailed"  # "basic" or "detailed"
 
 class AnalyzedPost(RedditPost):
     relevance_score: Optional[int] = None
@@ -49,28 +50,47 @@ async def analyze_posts(request: AnalysisRequest):
         
         for post in request.posts:
             try:
-                # Create analysis prompt
-                prompt = f"""
-                Analyze this Reddit post for relevance to our business:
-                
-                BUSINESS CONTEXT:
-                {context_str}
-                
-                REDDIT POST:
-                Title: {post.title}
-                Subreddit: r/{post.subreddit}
-                Content: {post.selftext or 'No content'}
-                Keywords: {', '.join(post.keywords)}
-                
-                Please provide a JSON response with:
-                1. relevance_score: 0-100 (how relevant is this post to our business?)
-                2. content_type: Type of content (question, discussion, news, etc.)
-                3. target_audience_match: How well does this match our target audience?
-                4. reasoning: Brief explanation of the relevance score
-                5. business_opportunity: Potential business opportunity or content idea
-                
-                Respond ONLY with valid JSON, no other text.
-                """
+                # Create analysis prompt based on analysis type
+                if request.analysis_type == "basic":
+                    prompt = f"""
+                    Analyze this Reddit post for basic relevance to our business:
+                    
+                    BUSINESS CONTEXT:
+                    {context_str}
+                    
+                    REDDIT POST:
+                    Title: {post.title}
+                    Subreddit: r/{post.subreddit}
+                    Content: {post.selftext or 'No content'}
+                    Keywords: {', '.join(post.keywords)}
+                    
+                    Please provide a JSON response with ONLY:
+                    1. relevance_score: 0-100 (how relevant is this post to our business?)
+                    
+                    Respond ONLY with valid JSON, no other text.
+                    """
+                else:
+                    prompt = f"""
+                    Analyze this Reddit post for relevance to our business:
+                    
+                    BUSINESS CONTEXT:
+                    {context_str}
+                    
+                    REDDIT POST:
+                    Title: {post.title}
+                    Subreddit: r/{post.subreddit}
+                    Content: {post.selftext or 'No content'}
+                    Keywords: {', '.join(post.keywords)}
+                    
+                    Please provide a JSON response with:
+                    1. relevance_score: 0-100 (how relevant is this post to our business?)
+                    2. content_type: Type of content (question, discussion, news, etc.)
+                    3. target_audience_match: How well does this match our target audience?
+                    4. reasoning: Brief explanation of the relevance score
+                    5. business_opportunity: Potential business opportunity or content idea
+                    
+                    Respond ONLY with valid JSON, no other text.
+                    """
                 
                 response = client.chat.completions.create(
                     model="gpt-3.5-turbo",
@@ -85,15 +105,21 @@ async def analyze_posts(request: AnalysisRequest):
                 # Parse JSON response
                 analysis_data = json.loads(response.choices[0].message.content)
                 
-                # Create analyzed post
-                analyzed_post = AnalyzedPost(
-                    **post.model_dump(),
-                    relevance_score=analysis_data.get('relevance_score'),
-                    content_type=analysis_data.get('content_type'),
-                    target_audience_match=analysis_data.get('target_audience_match'),
-                    reasoning=analysis_data.get('reasoning'),
-                    business_opportunity=analysis_data.get('business_opportunity')
-                )
+                # Create analyzed post based on analysis type
+                if request.analysis_type == "basic":
+                    analyzed_post = AnalyzedPost(
+                        **post.model_dump(),
+                        relevance_score=analysis_data.get('relevance_score')
+                    )
+                else:
+                    analyzed_post = AnalyzedPost(
+                        **post.model_dump(),
+                        relevance_score=analysis_data.get('relevance_score'),
+                        content_type=analysis_data.get('content_type'),
+                        target_audience_match=analysis_data.get('target_audience_match'),
+                        reasoning=analysis_data.get('reasoning'),
+                        business_opportunity=analysis_data.get('business_opportunity')
+                    )
                 
                 analyzed_posts.append(analyzed_post)
                 

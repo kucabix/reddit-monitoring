@@ -63,14 +63,14 @@ def matches(text: str, keywords: List[str]) -> tuple[bool, List[str]]:
     return bool(matched_keywords), matched_keywords
 
 def is_post_stale(db: Session, reddit_id: str) -> bool:
-    """Check if a Reddit post is stale (displayed more than 48 hours ago)."""
+    """Check if a Reddit post is stale (displayed more than 72 hours ago)."""
     displayed_post = db.query(DisplayedPost).filter(DisplayedPost.reddit_id == reddit_id).first()
     if not displayed_post:
         return False
     
-    # Check if displayed more than 48 hours ago
+    # Check if displayed more than 72 hours ago
     from datetime import timedelta
-    stale_threshold = datetime.utcnow() - timedelta(minutes=1) # revert to 48 hours after demo
+    stale_threshold = datetime.utcnow() - timedelta(hours=72)
     return displayed_post.displayed_at < stale_threshold
 
 def mark_post_as_displayed(db: Session, reddit_id: str, title: str, created_utc: datetime):
@@ -131,7 +131,6 @@ async def search_reddit(request: SearchRequest, req: Request, db: Session = Depe
                             reddit_id = post.get("id", "")
                             created_utc = datetime.fromtimestamp(post.get("created_utc", 0))
                             
-                            # Check if post is stale (displayed more than 48h ago)
                             is_stale = False
                             if reddit_id:
                                 is_stale = is_post_stale(db, reddit_id)
@@ -261,9 +260,8 @@ async def get_displayed_posts_stats(db: Session = Depends(get_db)):
     try:
         total_posts = db.query(DisplayedPost).count()
         
-        # Count stale posts (displayed more than 48h ago)
         from datetime import timedelta
-        stale_threshold = datetime.utcnow() - timedelta(hours=48)
+        stale_threshold = datetime.utcnow() - timedelta(hours=72)
         stale_posts = db.query(DisplayedPost).filter(DisplayedPost.displayed_at < stale_threshold).count()
         fresh_posts = total_posts - stale_posts
         
@@ -271,7 +269,7 @@ async def get_displayed_posts_stats(db: Session = Depends(get_db)):
             "total_displayed_posts": total_posts,
             "fresh_posts": fresh_posts,
             "stale_posts": stale_posts,
-            "stale_threshold_hours": 48
+            "stale_threshold_hours": 72
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get stats: {e}")
