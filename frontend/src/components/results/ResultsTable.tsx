@@ -140,13 +140,13 @@ export function ResultsTable({
               {results.length} posts found • {selectedPosts.length} selected
             </CardDescription>
           </div>
-          <div className="flex space-x-2 mt-4 sm:mt-0">
+          {/* <div className="flex space-x-2 mt-4 sm:mt-0">
             <Button variant="outline" onClick={handleSelectAll}>
               {selectedPosts.length === results.length
                 ? "Deselect All"
                 : "Select All"}
             </Button>
-          </div>
+          </div> */}
         </div>
       </CardHeader>
       <CardContent>
